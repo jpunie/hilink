@@ -21,7 +21,7 @@ working with the API extremely easy:
 
 ```sh
 # install hlcli tool
-$ go get -u github.com/knq/hilink/cmd/hlcli
+$ go get -u github.com/jpunie/hilink/cmd/hlcli
 
 # display available commands
 $ hlcli help
@@ -49,7 +49,7 @@ firmware and WebUI that enables the extra features.
 Here is the relevant information taken from the API using the
 [hinfo](cmd/hinfo) tool:
 ```sh
-$ cd $GOPATH/src/github.com/knq/hilink
+$ cd $GOPATH/src/github.com/jpunie/hilink
 $ go build ./cmd/hinfo/ && ./hinfo
 {
   "Classify": "hilink",

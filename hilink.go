@@ -161,7 +161,7 @@ func (c *Client) doReq(path string, v interface{}, takeFirstEl bool) (interface{
 	if err != nil {
 		return nil, err
 	}
-    fmt.Println(string(body))
+
 	// decode
 	m, err := decodeXML(body, takeFirstEl)
 	if err != nil {
