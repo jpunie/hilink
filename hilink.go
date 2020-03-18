@@ -161,7 +161,7 @@ func (c *Client) doReq(path string, v interface{}, takeFirstEl bool) (interface{
 	if err != nil {
 		return nil, err
 	}
-
+    fmt.Println(string(body))
 	// decode
 	m, err := decodeXML(body, takeFirstEl)
 	if err != nil {
@@ -477,6 +477,31 @@ func (c *Client) ConnectionInfo() (XMLData, error) {
 	return c.Do("api/dialup/connection", nil)
 }
 
+// doReqConn wraps a connection manipulation request.
+func (c *Client) ConnectionProfile(roaming, maxIdleTime string,
+	// connectMode, autoReconnect, roamAutoConnect, roamAutoReconnect string,
+	// interval, idle int,
+) (bool, error) {
+	// boolToString()
+	// var roamingString string
+	// if roaming {
+	// 	roamingString = "1"
+	// } else {
+	// 	roamingString = "0"
+	// }
+
+	return c.doReqCheckOK("api/dialup/connection", SimpleRequestXML(
+		"ConnectMode", "0",
+		"MTU", "1500",
+		"MaxIdelTime", maxIdleTime,		
+		// "MaxIdelTime", "600",		
+		// "MaxIdelTime", fmt.Sprintf("%d", maxIdleTime),
+		"RoamAutoConnectEnable", roaming,
+		"auto_dial_switch", "1",
+		"pdp_always_on", "0",
+	))
+}
+
 // GlobalFeatures retrieves global feature information.
 func (c *Client) GlobalFeatures() (XMLData, error) {
 	return c.Do("api/global/module-switch", nil)
@@ -630,8 +655,56 @@ func (c *Client) Disconnect() (bool, error) {
 }
 
 // ProfileInfo retrieves profile information (ie, APN).
+// func (c *Client) setRoaming(active bool) (XMLData, error) {
+// 	return c.doReqCheckOK("api/dialup/connection", SimpleRequestXML(
+// 	))
+// }
+
+// ProfileInfo retrieves profile information (ie, APN).
 func (c *Client) ProfileInfo() (XMLData, error) {
 	return c.Do("api/dialup/profiles", nil)
+}
+
+// Add connection profile 
+func (c *Client) ProfileAdd(name string, apn string, user string, password string, isDefault bool) (bool, error) {
+	var newDefaultValue int
+	if isDefault {
+		newDefaultValue = 1
+	} else {
+		newDefaultValue = 0
+	}
+	return c.doReqCheckOK("api/dialup/profiles", XMLData{
+		"Delete" : 0,
+		"SetDefault" : newDefaultValue,
+		"Modify" : 1,
+		"Profile" : XMLData{
+			"Index" : "",  //original is new_index
+			"IsValid" : 1,
+			"Name" : name,
+			"ApnIsStatic" : "1",
+			"ApnName" : apn,
+			"DialupNum" : "*99#",
+			"Username" : user,
+			"Password" : password,
+			"AuthMode" : "0",
+			"IpIsStatic" : "",
+			"IpAddress" : "",
+			"DnsIsStatic" : "",
+			"PrimaryDns" : "",
+			"SecondaryDns" : "",
+			"ReadOnly" : "0",
+			"iptype" : "0",
+		},
+	})
+}
+
+// Delete connection profile 
+func (c *Client) ProfileDelete(index, newDefault string) (bool, error) {
+	return c.doReqCheckOK("api/dialup/profiles", SimpleRequestXML(
+		"Delete", index,
+		"SetDefault", newDefault,
+		"Modify", "0",
+	))
 }
 
 // SmsFeatures retrieves SMS feature information.
@@ -699,24 +772,6 @@ func (c *Client) SmsDelete(id uint) (bool, error) {
 		"Index", fmt.Sprintf("%d", id),
 	))
 }
-
-// doReqConn wraps a connection manipulation request.
-/*func (c *Client) doReqConn(
-	cm ConnectMode,
-	autoReconnect, roamAutoConnect, roamAutoReconnect bool,
-	interval, idle int,
-) (bool, error) {
-	boolToString()
-
-	return c.doReqCheckOK("api/dialup/connection", SimpleRequestXML(
-		"RoamAutoConnectEnable", boolToString(roamAutoConnect),
-		"AutoReconnect", boolToString(autoReconnect),
-		"RoamAutoReconnectEnable", boolToString(roamAutoReconnect),
-		"ReconnectInterval", fmt.Sprintf("%d", interval),
-		"MaxIdleTime", fmt.Sprintf("%d", idle),
-		"ConnectMode", cm.String(),
-	))
-}*/
 
 // UssdStatus retrieves current USSD session status information.
 func (c *Client) UssdStatus() (UssdState, error) {

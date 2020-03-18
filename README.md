@@ -8,7 +8,7 @@ Package hilink is a Go package for working with Huawei Hilink devices (ie,
 Install in the normal way:
 
 ```sh
-go get -u github.com/knq/hilink
+go get -u github.com/jpunie/hilink
 ```
 
 # Usage
