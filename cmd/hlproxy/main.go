@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/jpunie/hilink"
@@ -23,10 +24,13 @@ import (
 const SMS_COMMAND_PREFIX_APN_SET = "apnSet,"
 const SMS_COMMAND_PREFIX_APN_DEL = "apnDel"
 const SMS_COMMAND_MODEM_INFO = "modemInfo"
+const SMS_COMMAND_SMS_CLEAR = "smsClear"
 // const SMS_COMMAND_REBOOT = "reboot"
 // const SMS_COMMAND_RESET = "reset"
 // const SMS_COMMAND_STATUS = "status"
 // const SMS_COMMAND_INFO = "info"
+
+const SMS_CHECK_DELAY = 5
 
 type ProfileRequest struct {
 	Name  string `json:"Name"`
@@ -450,22 +454,25 @@ func disconnect(w http.ResponseWriter, r *http.Request) {
 
 func checkForSms() {
 	for true {
-		time.Sleep(2 * time.Second)
+		time.Sleep(SMS_CHECK_DELAY * time.Second)
 		client, err := getHilinkClient()
 		if err == nil {	
 			l, err := client.SmsList(uint(hilink.SmsBoxTypeInbox), 1, 50, false, true, true)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			}
-			smsCount := len(l)
-			messages := l["Messages"].(map[string]interface{})["Message"]
-			if smsCount == 1 {
-				handleSms(client, messages.(map[string]interface{}))	
-			} else if smsCount > 0 {
-				for _, element := range messages.([]interface{}) {
-					handleSms(client, element.(map[string]interface{}))	
+			smsCount, err := strconv.Atoi(l["Count"].(string))
+			if smsCount > 0 {
+				messages := l["Messages"].(map[string]interface{})["Message"]
+				if reflect.TypeOf(messages).Kind() == reflect.Map {
+					handleSms(client, messages.(map[string]interface{}))	
+				} else if reflect.TypeOf(messages).Kind() == reflect.Slice {
+					for _, element := range messages.([]interface{}) {
+						handleSms(client, element.(map[string]interface{}))	
+					}
 				}
-			}	
+			}
+			clearSmsbox(client, hilink.SmsBoxTypeOutbox)	
 		} else {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
@@ -486,6 +493,10 @@ func handleSms(client *hilink.Client, message map[string]interface{}) {
 	}
 	if (strings.HasPrefix(messageContent, SMS_COMMAND_MODEM_INFO)) {
 		handleModemInfoSms(client, message)
+		deleteSms(client, message)
+	}
+	if (strings.HasPrefix(messageContent, SMS_COMMAND_SMS_CLEAR)) {
+		handleSmsClearSms(client, message)
 		deleteSms(client, message)
 	}
 }
@@ -574,6 +585,43 @@ func handleModemInfoSms(client *hilink.Client, message map[string]interface{}) {
 		return
 	}	
 	sendSms(client, strings.Join(filterDeviceInfo(deviceInfo), ","), phoneNumber)
+}
+
+func handleSmsClearSms(client *hilink.Client, message map[string]interface{}) {
+	fmt.Println(message)
+	phoneNumber := message["Phone"].(string)
+	countOutbox, err1 := clearSmsbox(client, hilink.SmsBoxTypeOutbox)
+	if err1 != nil {
+		sendSms(client, fmt.Sprintf("Clear SMS outbox failed! %v", err1), phoneNumber)
+		return
+	}
+	countInbox, err2 := clearSmsbox(client, hilink.SmsBoxTypeInbox)
+	if err2 != nil {
+		sendSms(client, fmt.Sprintf("Clear SMS inbox failed! %v", err2), phoneNumber)
+		return
+	}
+	sendSms(client, fmt.Sprintf("Clear SMS boxes in: %d out: %d! ", countInbox, countOutbox), phoneNumber)	
+	clearSmsbox(client, hilink.SmsBoxTypeOutbox)
+}
+
+func clearSmsbox(client *hilink.Client, boxType hilink.SmsBoxType) (int, error) {
+	l, err := client.SmsList(uint(boxType), 1, 50, false, true, false)
+	if err != nil {
+		return 0, err
+	}
+	fmt.Println(l)
+	smsCount, err := strconv.Atoi(l["Count"].(string))
+	if smsCount > 0 {
+		messages := l["Messages"].(map[string]interface{})["Message"]
+		if smsCount == 1 {
+			deleteSms(client, messages.(map[string]interface{}))	
+		} else if smsCount > 0 {
+			for _, element := range messages.([]interface{}) {
+				deleteSms(client, element.(map[string]interface{}))	
+			}
+		}
+	}
+	return smsCount, nil
 }
   
 func filterDeviceInfo(m map[string]interface{}) []string {
