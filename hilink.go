@@ -482,20 +482,10 @@ func (c *Client) ConnectionProfile(roaming, maxIdleTime string,
 	// connectMode, autoReconnect, roamAutoConnect, roamAutoReconnect string,
 	// interval, idle int,
 ) (bool, error) {
-	// boolToString()
-	// var roamingString string
-	// if roaming {
-	// 	roamingString = "1"
-	// } else {
-	// 	roamingString = "0"
-	// }
-
 	return c.doReqCheckOK("api/dialup/connection", SimpleRequestXML(
 		"ConnectMode", "0",
 		"MTU", "1500",
 		"MaxIdelTime", maxIdleTime,		
-		// "MaxIdelTime", "600",		
-		// "MaxIdelTime", fmt.Sprintf("%d", maxIdleTime),
 		"RoamAutoConnectEnable", roaming,
 		"auto_dial_switch", "1",
 		"pdp_always_on", "0",
@@ -640,6 +630,28 @@ func (c *Client) PinSimlockInfo() (XMLData, error) {
 	return c.Do("api/pin/simlock", nil)
 }
 
+func (c *Client) MobileDataSwitch() (XMLData, error) {
+	return c.Do("api/dialup/mobile-dataswitch", nil)
+}
+
+func (c *Client) MobileDataSwitchState(state string) (bool, error) {
+	return c.doReqCheckOK("api/dialup/mobile-dataswitch", XMLData{
+		"dataswitch": state,
+	})
+}
+
+func (c *Client) MobileDataActivate() (bool, error) {
+	return c.doReqCheckOK("api/dialup/mobile-dataswitch", XMLData{
+		"dataswitch": "1",
+	})
+}
+
+func (c *Client) MobileDataDeactivate() (bool, error) {
+	return c.doReqCheckOK("api/dialup/mobile-dataswitch", XMLData{
+		"dataswitch": "0",
+	})
+}
+
 // Connect connects the Hilink device to the network provider.
 func (c *Client) Connect() (bool, error) {
 	return c.doReqCheckOK("api/dialup/dial", XMLData{
@@ -667,11 +679,11 @@ func (c *Client) ProfileInfo() (XMLData, error) {
 
 // Add connection profile 
 func (c *Client) ProfileAdd(name string, apn string, user string, password string, isDefault bool) (bool, error) {
-	var newDefaultValue int
+	var newDefaultValue string
 	if isDefault {
-		newDefaultValue = 1
+		newDefaultValue = "0"
 	} else {
-		newDefaultValue = 0
+		newDefaultValue = "1"
 	}
 	return c.doReqCheckOK("api/dialup/profiles", XMLData{
 		"Delete" : 0,
@@ -767,9 +779,9 @@ func (c *Client) SmsReadSet(id string) (bool, error) {
 }
 
 // SmsDelete deletes a specified SMS.
-func (c *Client) SmsDelete(id uint) (bool, error) {
+func (c *Client) SmsDelete(id string) (bool, error) {
 	return c.doReqCheckOK("api/sms/delete-sms", SimpleRequestXML(
-		"Index", fmt.Sprintf("%d", id),
+		"Index", id,
 	))
 }
 
