@@ -46,6 +46,11 @@ type ConnectionRequest struct {
 	DataSwitch string `json:"DataSwitch"`
 }
 
+type SmsRequest struct {
+	To  string `json:"To"`
+	Message  string `json:"Message"`
+}
+
 func getHilinkClient() (*hilink.Client, error) {
 	// create client
 	var opts = []hilink.Option{
@@ -136,7 +141,21 @@ func listProfiles(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return 
 	}
-	getJsonEncoder(w).Encode(profileInfo["Profiles"].(map[string]interface{})["Profile"])
+	profilesWrapper := profileInfo["Profiles"]
+	w.WriteHeader(http.StatusOK)
+	if reflect.TypeOf(profilesWrapper).Kind() == reflect.String {
+		getJsonEncoder(w).Encode([]int{})
+		return;
+	} else {
+		profiles := profilesWrapper.(map[string]interface{})["Profile"]
+		if reflect.TypeOf(profiles).Kind() == reflect.Map {
+			s := make([]map[string]interface{}, 1, 1)
+			s[0] = profiles.(map[string]interface {})
+			getJsonEncoder(w).Encode(s)
+		} else {
+			getJsonEncoder(w).Encode(profiles)
+		}
+	}
 }
 
 func getProfile(w http.ResponseWriter, r *http.Request) {
@@ -302,11 +321,16 @@ func deleteProfileWithIndex(client *hilink.Client, profileIndex string) (bool, e
 	)
 }
 
-func remapConnectionInfo(connectionInfo, dataswitch map[string]interface{}) (map[string]string) {
+func remapConnectionInfo(connectionInfo, dataswitch, statusInfo map[string]interface{}) (map[string]string) {
 	return map[string]string{
 		"Roaming": connectionInfo["RoamAutoConnectEnable"].(string),
 		"MaxIdleTime": connectionInfo["MaxIdelTime"].(string),
 		"DataSwitch": dataswitch["dataswitch"].(string),
+		"ConnectionStatus": statusInfo["ConnectionStatus"].(string),
+		"CurrentNetworkType": statusInfo["CurrentNetworkType"].(string),
+		"RoamingStatus": statusInfo["RoamingStatus"].(string),
+		"ServiceStatus": statusInfo["ServiceStatus"].(string),
+		"SimStatus": statusInfo["SimStatus"].(string), 
 	}
 }
 
@@ -327,7 +351,13 @@ func getConnectionInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return 
 	} 	
-	getJsonEncoder(w).Encode(remapConnectionInfo(connectionInfo, dataswitch))
+
+	statusInfo, err := client.StatusInfo()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return 
+	} 	
+	getJsonEncoder(w).Encode(remapConnectionInfo(connectionInfo, dataswitch, statusInfo))
 }
 
 func setConnectionInfo(w http.ResponseWriter, r *http.Request) {
@@ -386,7 +416,13 @@ func setConnectionInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return 
 	}
-	getJsonEncoder(w).Encode(remapConnectionInfo(connectionInfo, dataswitch))
+	// TODO make separate URI for connection-state
+	statusInfo, err := client.StatusInfo()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return 
+	}	
+	getJsonEncoder(w).Encode(remapConnectionInfo(connectionInfo, dataswitch, statusInfo))
 }
 
 func connect(w http.ResponseWriter, r *http.Request) {
@@ -452,6 +488,89 @@ func disconnect(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func listSmsbox(w http.ResponseWriter, r *http.Request, boxType hilink.SmsBoxType) {
+	client, err := getHilinkClient()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return	
+	}
+	l, err := client.SmsList(uint(boxType), 1, 50, false, true, true)
+	if err != nil {
+		http.Error(w, "Call return with failure", http.StatusInternalServerError)
+		return
+	}
+	smsCount, err := strconv.Atoi(l["Count"].(string))
+	w.WriteHeader(http.StatusOK)
+	if smsCount == 0 {
+		getJsonEncoder(w).Encode([]int{})
+		return;
+	}
+	messages := l["Messages"].(map[string]interface{})["Message"]
+	if reflect.TypeOf(messages).Kind() == reflect.Map {
+		s := make([]map[string]interface{}, 1, 1)
+		s[0] = messages.(map[string]interface {})
+		getJsonEncoder(w).Encode(s)
+	} else {
+		getJsonEncoder(w).Encode(messages)
+	}
+}
+
+func listSmsInbox(w http.ResponseWriter, r *http.Request) {
+	listSmsbox(w, r, hilink.SmsBoxTypeInbox)
+}	
+
+func deleteSmsApi(w http.ResponseWriter, r *http.Request) {
+	client, err := getHilinkClient()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return	
+	}
+	var smsIndex = mux.Vars(r)["index"]
+	_, err = client.SmsDelete(smsIndex)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return	
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func listSmsOutbox(w http.ResponseWriter, r *http.Request) {
+	listSmsbox(w, r, hilink.SmsBoxTypeOutbox)
+}
+
+func sendNewSms(w http.ResponseWriter, r *http.Request) {
+	client, err := getHilinkClient()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return	
+	}
+	var newSms SmsRequest
+	reqBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	err = json.Unmarshal(reqBody, &newSms)
+	if err != nil {
+		http.Error(w, "Error while parsing request body", http.StatusBadRequest)
+		return
+	}
+
+	flag, err := client.SmsSend(newSms.Message, newSms.To)
+
+	if !flag {
+		http.Error(w, "Call returned with failure", http.StatusInternalServerError)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
 func checkForSms() {
 	for true {
 		time.Sleep(SMS_CHECK_DELAY * time.Second)
@@ -460,6 +579,7 @@ func checkForSms() {
 			l, err := client.SmsList(uint(hilink.SmsBoxTypeInbox), 1, 50, false, true, true)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				continue
 			}
 			smsCount, err := strconv.Atoi(l["Count"].(string))
 			if smsCount > 0 {
@@ -473,6 +593,7 @@ func checkForSms() {
 				}
 			}
 			clearSmsbox(client, hilink.SmsBoxTypeOutbox)	
+			clearSmsbox(client, hilink.SmsBoxTypeDraft)	
 		} else {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
@@ -609,7 +730,6 @@ func clearSmsbox(client *hilink.Client, boxType hilink.SmsBoxType) (int, error) 
 	if err != nil {
 		return 0, err
 	}
-	fmt.Println(l)
 	smsCount, err := strconv.Atoi(l["Count"].(string))
 	if smsCount > 0 {
 		messages := l["Messages"].(map[string]interface{})["Message"]
@@ -669,7 +789,7 @@ func mapValues(m map[string]interface{}) []string {
 	return values
 }
 
-func sendSms(client *hilink.Client, content, recipient string) {
+func sendSms(client *hilink.Client, content string, recipient string) {
 	b, err := client.SmsSend(content, recipient)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -689,9 +809,78 @@ func deleteSms(client *hilink.Client, message map[string]interface{}) {
 	}
 }
 
+func checkInitializedAndConnected() {
+	for true {
+		time.Sleep(SMS_CHECK_DELAY * time.Second)
+		client, err := getHilinkClient()
+		if err == nil {	
+			deviceInfo, err := client.DeviceInfo()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				continue
+			}
+			ipAddress := deviceInfo["WanIPAddress"].(string)
+			if ipAddress == "" {
+				// statusInfo, err := client.StatusInfo()
+				// if err != nil {
+				// 	fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				// 	continue
+				// }
+				changed, err := checkAndInitProfile(client, deviceInfo)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "error: %v\n", err)
+					continue
+				}
+				if changed {
+					client.ConnectionProfile("1", "3600")
+					client.MobileDataSwitchState("1")
+					client.Connect()
+				}
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		}
+	}
+}
+
+func checkAndInitProfile(client *hilink.Client, deviceInfo map[string]interface{}) (bool, error) {
+		imsi := deviceInfo["Imsi"].(string)
+		imsiPrefix := imsi[0:5]
+		var newProfile ProfileRequest
+		switch imsiPrefix {
+		case "20408":
+			newProfile = ProfileRequest{
+				Name: "simpoint.m2m",
+				ApnName: "simpoint.m2m",
+				Username: "",
+				Password: "",
+				IsDefault: true,
+			}
+		default: 
+			newProfile = ProfileRequest{
+				Name: "",
+				ApnName: "",
+				Username: "",
+				Password: "",
+				IsDefault: true,
+			}
+		}
+		if newProfile.Name != "" {
+			flag, err := createNewProfileFromRequest(client, newProfile)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "APN %s config failed! %v", newProfile.ApnName, err)
+				return false, err
+			} 
+			return flag, nil
+		}	
+		return false, nil
+}	
+
 func main() {
 	// initEvents()
 	go checkForSms()
+	go checkInitializedAndConnected()
+
 	router := mux.NewRouter().StrictSlash(true)
 	router.HandleFunc("/", rootLink)
 	router.HandleFunc("/device-info", getDeviceInfo).Methods("GET")
@@ -705,6 +894,10 @@ func main() {
 	router.HandleFunc("/connection-info", setConnectionInfo).Methods("PUT")
 	router.HandleFunc("/connect", connect).Methods("POST")
 	router.HandleFunc("/disconnect", disconnect).Methods("POST")
+	router.HandleFunc("/sms/inbox", listSmsInbox).Methods("GET")
+	router.HandleFunc("/sms/outbox", listSmsOutbox).Methods("GET")
+	router.HandleFunc("/sms/outbox", sendNewSms).Methods("POST")
+	router.HandleFunc("/sms/{index}", deleteSmsApi).Methods("DELETE")
 
 	log.Fatal(http.ListenAndServe("127.0.0.1:1103", router))
 }
