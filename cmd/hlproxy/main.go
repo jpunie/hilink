@@ -33,6 +33,7 @@ const SMS_COMMAND_SMS_CLEAR = "smsClear"
 // const SMS_COMMAND_INFO = "info"
 
 const SMS_CHECK_DELAY = 5
+const NETWORK_CHECK_DELAY = 30
 
 type ProfileRequest struct {
 	Name      string `json:"Name"`
@@ -800,9 +801,17 @@ func deleteSms(client *hilink.Client, message map[string]interface{}) {
 	}
 }
 
+func networkNotReachable() bool {
+	_, err := http.Get("http://ifconfig.co")
+	if err != nil {
+		return true
+	}
+	return false
+}
+
 func checkInitializedAndConnected() {
 	for true {
-		time.Sleep(SMS_CHECK_DELAY * time.Second)
+		time.Sleep(NETWORK_CHECK_DELAY * time.Second)
 		client, err := getHilinkClient()
 		if err == nil {
 			deviceInfo, err := client.DeviceInfo()
@@ -811,7 +820,7 @@ func checkInitializedAndConnected() {
 				continue
 			}
 			ipAddress := deviceInfo["WanIPAddress"].(string)
-			if ipAddress == "" {
+			if ipAddress == "" && networkNotReachable() {
 				// statusInfo, err := client.StatusInfo()
 				// if err != nil {
 				// 	fmt.Fprintf(os.Stderr, "error: %v\n", err)
