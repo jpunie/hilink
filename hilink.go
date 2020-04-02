@@ -479,13 +479,14 @@ func (c *Client) ConnectionInfo() (XMLData, error) {
 
 // doReqConn wraps a connection manipulation request.
 func (c *Client) ConnectionProfile(roaming, maxIdleTime string,
-	// connectMode, autoReconnect, roamAutoConnect, roamAutoReconnect string,
-	// interval, idle int,
+
+// connectMode, autoReconnect, roamAutoConnect, roamAutoReconnect string,
+// interval, idle int,
 ) (bool, error) {
 	return c.doReqCheckOK("api/dialup/connection", SimpleRequestXML(
 		"ConnectMode", "0",
 		"MTU", "1500",
-		"MaxIdelTime", maxIdleTime,		
+		"MaxIdelTime", maxIdleTime,
 		"RoamAutoConnectEnable", roaming,
 		"auto_dial_switch", "1",
 		"pdp_always_on", "0",
@@ -677,7 +678,7 @@ func (c *Client) ProfileInfo() (XMLData, error) {
 	return c.Do("api/dialup/profiles", nil)
 }
 
-// Add connection profile 
+// Add connection profile
 func (c *Client) ProfileAdd(name string, apn string, user string, password string, isDefault bool) (bool, error) {
 	var newDefaultValue string
 	if isDefault {
@@ -686,31 +687,31 @@ func (c *Client) ProfileAdd(name string, apn string, user string, password strin
 		newDefaultValue = "1"
 	}
 	return c.doReqCheckOK("api/dialup/profiles", XMLData{
-		"Delete" : 0,
-		"SetDefault" : newDefaultValue,
-		"Modify" : 1,
-		"Profile" : XMLData{
-			"Index" : "",  //original is new_index
-			"IsValid" : 1,
-			"Name" : name,
-			"ApnIsStatic" : "1",
-			"ApnName" : apn,
-			"DialupNum" : "*99#",
-			"Username" : user,
-			"Password" : password,
-			"AuthMode" : "0",
-			"IpIsStatic" : "",
-			"IpAddress" : "",
-			"DnsIsStatic" : "",
-			"PrimaryDns" : "",
-			"SecondaryDns" : "",
-			"ReadOnly" : "0",
-			"iptype" : "0",
+		"Delete":     0,
+		"SetDefault": newDefaultValue,
+		"Modify":     1,
+		"Profile": XMLData{
+			"Index":        "", //original is new_index
+			"IsValid":      1,
+			"Name":         name,
+			"ApnIsStatic":  "1",
+			"ApnName":      apn,
+			"DialupNum":    "*99#",
+			"Username":     user,
+			"Password":     password,
+			"AuthMode":     "0",
+			"IpIsStatic":   "",
+			"IpAddress":    "",
+			"DnsIsStatic":  "",
+			"PrimaryDns":   "",
+			"SecondaryDns": "",
+			"ReadOnly":     "0",
+			"iptype":       "0",
 		},
 	})
 }
 
-// Delete connection profile 
+// Delete connection profile
 func (c *Client) ProfileDelete(index, newDefault string) (bool, error) {
 	return c.doReqCheckOK("api/dialup/profiles", SimpleRequestXML(
 		"Delete", index,

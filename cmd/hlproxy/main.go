@@ -54,16 +54,23 @@ type SmsRequest struct {
 	Message string `json:"Message"`
 }
 
+var hlc *hilink.Client
+
 func getHilinkClient() (*hilink.Client, error) {
+	if hlc != nil {
+		return hlc, nil
+	}
 	// create client
 	var opts = []hilink.Option{
 		// hilink.Log(log.Printf, log.Printf),
 	}
-	client, err := hilink.NewClient(opts...)
+	var err error
+	hlc, err = hilink.NewClient(opts...)
 	if err != nil {
+		hlc = nil
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 	}
-	return client, err
+	return hlc, err
 }
 
 func getJsonEncoder(w http.ResponseWriter) *json.Encoder {
