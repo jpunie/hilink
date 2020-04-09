@@ -30,6 +30,7 @@ const SMS_COMMAND_MODEM_INFO = "modemInfo"
 const SMS_COMMAND_CONNECTION_INFO = "connectionInfo"
 const SMS_COMMAND_SMS_CLEAR = "smsClear"
 const SMS_COMMAND_REBOOT = "reboot"
+const SMS_COMMAND_UPTIME = "uptime"
 
 // const SMS_COMMAND_RESET = "reset"
 // const SMS_COMMAND_STATUS = "status"
@@ -638,7 +639,7 @@ func checkForSms() {
 			clearSmsbox(client, hilink.SmsBoxTypeDraft)
 		} else {
 			resetHilinkClient()
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "checkForSms error: %v\n", err)
 		}
 	}
 }
@@ -669,6 +670,10 @@ func handleSms(client *hilink.Client, message map[string]interface{}) {
 	}
 	if strings.HasPrefix(messageContent, SMS_COMMAND_REBOOT) {
 		handleRebootSms(client, message)
+		deleteSms(client, message)
+	}
+	if strings.HasPrefix(messageContent, SMS_COMMAND_UPTIME) {
+		handleUptimeSms(client, message)
 		deleteSms(client, message)
 	}
 }
@@ -825,13 +830,20 @@ func clearSmsbox(client *hilink.Client, boxType hilink.SmsBoxType) (int, error) 
 
 func handleRebootSms(client *hilink.Client, message map[string]interface{}) {
 	fmt.Println(message)
-	cmd := exec.Command("sudo", "reboot")
-	err := cmd.Run()
+	go rebootDevice()
+}
+
+func handleUptimeSms(client *hilink.Client, message map[string]interface{}) {
+	fmt.Println(message)
+	phoneNumber := message["Phone"].(string)
+	cmd := exec.Command("uptime")
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		phoneNumber := message["Phone"].(string)
-		sendSms(client, "Reboot failed!", phoneNumber)
-		log.Fatalf("Reboot failed with %s\n", err)
+		sendSms(client, "Requesting uptime failed!", phoneNumber)
+		fmt.Fprintf(os.Stderr, "Uptime request failed with %v", err)
+		return
 	}
+	sendSms(client, fmt.Sprintf("%s", string(out)), phoneNumber)
 }
 
 func filterDeviceInfo(m map[string]interface{}) []string {
@@ -900,11 +912,22 @@ func deleteSms(client *hilink.Client, message map[string]interface{}) {
 }
 
 func networkNotReachable() bool {
-	_, err := http.Get("http://ifconfig.io/ip")
+	resp, err := http.Get("http://ifconfig.io/ip")
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return true
 	}
-	return false
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return true
+	}
+	if resp.Header.Get("Content-Type") == "text/plain" && len(body) <= 15 {
+		fmt.Fprintf(os.Stdout, "IP: %v\n", string(body))
+		return false
+	}
+	return true
 }
 
 func checkInitializedAndConnected() {
@@ -918,7 +941,8 @@ func checkInitializedAndConnected() {
 				continue
 			}
 			ipAddress := deviceInfo["WanIPAddress"].(string)
-			if ipAddress == "" && networkNotReachable() {
+			noNetworkAccess := networkNotReachable()
+			if ipAddress == "" && noNetworkAccess {
 				// statusInfo, err := client.StatusInfo()
 				// if err != nil {
 				// 	fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -972,6 +996,7 @@ func checkAndInitProfile(client *hilink.Client, deviceInfo map[string]interface{
 		}
 		return flag, nil
 	}
+	fmt.Fprintf(os.Stderr, "APN %s config failed!", newProfile.ApnName)
 	return false, nil
 }
 
@@ -990,6 +1015,15 @@ func rootLink(w http.ResponseWriter, r *http.Request) {
 		"/sms/outbox":       "List SMS from outbox, send SMS using method POST",
 		"/sms/{index}":      "Delete SMS using method DELETE",
 	})
+}
+
+func rebootDevice() {
+	time.Sleep(10 * time.Second)
+	cmd := exec.Command("sudo", "reboot")
+	err := cmd.Run()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Reboot failed with %s\n", err)
+	}
 }
 
 func main() {
