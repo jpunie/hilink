@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
@@ -119,6 +120,29 @@ func (c *Client) createRequest(urlstr string, v interface{}) (*http.Request, err
 
 	// set content type and CSRF token
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	req.Header[TokenHeader] = []string{c.token}
+	req.Header["_ResponseSource"] = []string{"Broswer"}
+
+	return req, nil
+}
+
+// createRequest creates a request for use with the Client.
+func (c *Client) createJsonRequest(urlstr string, v string) (*http.Request, error) {
+	if v == "" {
+		return http.NewRequest("GET", urlstr, nil)
+	}
+
+	// create reader from json string
+	body := strings.NewReader(v)
+
+	// build req
+	req, err := http.NewRequest("POST", urlstr, body)
+	if err != nil {
+		return nil, err
+	}
+
+	// set content type and CSRF token
+	req.Header.Set("Content-Type", "application/json;charset=UTF-8")
 	req.Header.Set(TokenHeader, c.token)
 
 	return req, nil
@@ -199,6 +223,49 @@ func (c *Client) doReqString(path string, v interface{}, elName string) (string,
 	return s, nil
 }
 
+// doReqString wraps a request operation, returning the data of the specified
+// child node named elName as a string.
+func (c *Client) doJsonReqString(path string, v string) (string, error) {
+	c.Lock()
+	defer c.Unlock()
+
+	var err error
+
+	// create http request
+	q, err := c.createJsonRequest(c.rawurl+path, v)
+	if err != nil {
+		return "", err
+	}
+
+	// do request
+	r, err := c.client.Do(q)
+	if err != nil {
+		return "", err
+	}
+	defer r.Body.Close()
+
+	// check status code
+	if r.StatusCode != http.StatusOK {
+		return "", ErrBadStatusCode
+	}
+
+	// retrieve and save csrf token header
+	tok := r.Header.Get(TokenHeader)
+	if tok != "" {
+		c.token = tok
+	}
+
+	// read body
+	buf := new(strings.Builder)
+	n, err := io.Copy(buf, r.Body)
+	_ = n
+	if err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
 // doReqCheckOK wraps a request operation (ie, connect, disconnect, etc),
 // checking success via the presence of 'OK' in the XML <response/>.
 func (c *Client) doReqCheckOK(path string, v interface{}) (bool, error) {
@@ -255,13 +322,30 @@ func (c *Client) Do(path string, v interface{}) (XMLData, error) {
 		return nil, err
 	}
 
-	// convert
+	if res == "OK" {
+		return XMLData{
+			"response": "OK",
+		}, nil
+	}
+
 	d, ok := res.(map[string]interface{})
 	if !ok {
 		return nil, ErrInvalidXML
 	}
 
 	return d, nil
+}
+
+// Do sends a request to the server with the provided path. If data is nil,
+// then GET will be used as the HTTP method, otherwise POST will be used.
+func (c *Client) DoJson(path string, v string) (string, error) {
+	// send request
+	res, err := c.doJsonReqString(path, v)
+	if err != nil {
+		return "", err
+	}
+
+	return res, nil
 }
 
 // NewSessionAndTokenID starts a session with the server, and returns the
@@ -945,6 +1029,41 @@ func (c *Client) UpnpSet(enabled bool) (bool, error) {
 	return c.doReqCheckOK("api/security/upnp", SimpleRequestXML(
 		"UpnpStatus", boolToString(enabled),
 	))
+}
+
+// Approve privacy policy.
+func (c *Client) PrivacyPolicy(agree bool) (string, error) {
+	return c.DoJson("api/app/privacypolicy",
+		"{\"data\": {\"Approve\": \"2\", \"Liscence\": \"0\"}}",
+	)
+}
+
+// Configure auto update.
+func (c *Client) AutoUpdate(enabled bool) (XMLData, error) {
+	return c.Do("api/online-update/autoupdate-config", SimpleRequestXML(
+		"auto_update", boolToString(enabled),
+		"ui_download", "0",
+	))
+}
+
+// Configure auto update.
+func (c *Client) BasicDeviceInfo(restore bool) (XMLData, error) {
+	return c.Do("api/device/basic_information", SimpleRequestXML(
+		"restore_default_status", boolToString(restore),
+	))
+}
+
+// Configure auto update.
+func (c *Client) OnlineUpdateConfig(autoUpdateEnabled bool, serverForceEnabled bool) (XMLData, error) {
+	return c.Do("api/online-update/configuration", SimpleRequestXML(
+		"autoUpdateInterval", "1",
+		"server_force_enable", boolToString(serverForceEnabled),
+	))
+}
+
+// Info auto update.
+func (c *Client) OnlineUpdateInfo() (XMLData, error) {
+	return c.Do("api/online-update/configuration", nil)
 }
 
 // TODO:

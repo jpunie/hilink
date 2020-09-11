@@ -235,6 +235,10 @@ func decodeXML(buf []byte, takeFirstEl bool) (interface{}, error) {
 		return nil, ErrInvalidResponse
 	}
 
+	if r == "OK" {
+		return r, nil
+	}
+
 	// convert
 	t, ok := r.(map[string]interface{})
 	if !ok {

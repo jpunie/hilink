@@ -948,6 +948,9 @@ func checkInitializedAndConnected() {
 				// 	fmt.Fprintf(os.Stderr, "error: %v\n", err)
 				// 	continue
 				// }
+
+				// initialize for new Huawei modem info
+
 				changed, err := checkAndInitProfile(client, deviceInfo)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -958,6 +961,11 @@ func checkInitializedAndConnected() {
 					client.MobileDataSwitchState("1")
 					client.Connect()
 				}
+
+				client.PrivacyPolicy(true)
+				client.AutoUpdate(false)
+				client.OnlineUpdateConfig(false, false)
+				client.BasicDeviceInfo(true)
 			}
 		} else {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)

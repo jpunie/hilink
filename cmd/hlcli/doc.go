@@ -91,6 +91,11 @@ var methodParamMap = map[string][]string{
 	"NatTypeSet":           {"ntype"},
 	"Upnp":                 {},
 	"UpnpSet":              {"enabled"},
+	"PrivacyPolicy":        {"agree"},
+	"AutoUpdate":           {"enabled"},
+	"BasicDeviceInfo":      {"restore"},
+	"OnlineUpdateInfo":     {},
+	"OnlineUpdateConfig":   {"autoUpdateEnabled", "serverForceEnabled"},
 }
 
 var methodCommentMap = map[string]string{
@@ -182,4 +187,9 @@ var methodCommentMap = map[string]string{
 	"NatTypeSet":           "NatTypeSet sets NAT type (values: 0, 1).",
 	"Upnp":                 "Upnp retrieves the status of UPNP.",
 	"UpnpSet":              "UpnpSet enables/disables UPNP.",
+	"PrivacyPolicy":        "Confirm privacy policy",
+	"AutoUpdate":           "Configure auto update of modem firmware",
+	"BasicDeviceInfo":      "Set basic device info to restore",
+	"OnlineUpdateInfo":     "Online update config info",
+	"OnlineUpdateConfig":   "Configure online update config",
 }
